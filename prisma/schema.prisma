@@ -1,0 +1,230 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MallCode {
+  rakuten
+  yahoo
+  amazon
+  qoo10
+}
+
+enum InquiryType {
+  address_change
+  cancel
+  return
+  defect
+  not_arrived
+  delay
+  receipt
+  order_confirm
+  authenticity
+  warranty
+  missing_parts
+  payment
+  double_charge
+  cod
+  delivery_time
+  customer_return
+  absence_return
+  unknown_address
+  other
+}
+
+enum InquiryStatus {
+  unread
+  replied
+  pending
+  needs_check
+}
+
+enum UserRole {
+  admin
+  staff
+}
+
+model Mall {
+  id           String    @id @default(cuid())
+  name         String
+  code         MallCode  @unique
+  apiEndpoint  String?
+  createdAt    DateTime  @default(now())
+  stores       Store[]
+}
+
+model Store {
+  id          String   @id @default(cuid())
+  mallId      String
+  mall        Mall     @relation(fields: [mallId], references: [id])
+  name        String
+  storeCode   String
+  apiKey      String?
+  apiSecret   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  inquiries   Inquiry[]
+  orders      Order[]
+}
+
+model Customer {
+  id                 String    @id @default(cuid())
+  mallId             String
+  externalCustomerId String?
+  name               String
+  email              String?
+  phone              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  orders             Order[]
+  inquiries          Inquiry[]
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  storeId         String
+  store           Store       @relation(fields: [storeId], references: [id])
+  customerId      String
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  externalOrderId String
+  orderDate       DateTime
+  totalAmount     Int
+  status          String
+  paymentMethod   String?
+  shippingAddress Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+  shipments       Shipment[]
+  inquiries       Inquiry[]
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id])
+  productName String
+  productId   String?
+  quantity    Int
+  unitPrice   Int
+  imageUrl    String?
+}
+
+model Shipment {
+  id                String    @id @default(cuid())
+  orderId           String
+  order             Order     @relation(fields: [orderId], references: [id])
+  shippingCompany   String
+  trackingNumber    String?
+  status            String
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  estimatedDelivery DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Inquiry {
+  id                String        @id @default(cuid())
+  storeId           String
+  store             Store         @relation(fields: [storeId], references: [id])
+  customerId        String
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  orderId           String?
+  order             Order?        @relation(fields: [orderId], references: [id])
+  externalInquiryId String?
+  inquiryType       InquiryType   @default(other)
+  status            InquiryStatus @default(unread)
+  subject           String
+  assignedToId      String?
+  assignedTo        User?         @relation(fields: [assignedToId], references: [id])
+  receivedAt        DateTime
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  messages          InquiryMessage[]
+  internalNotes     InternalNote[]
+  suggestions       SuggestedTemplate[]
+}
+
+model InquiryMessage {
+  id          String   @id @default(cuid())
+  inquiryId   String
+  inquiry     Inquiry  @relation(fields: [inquiryId], references: [id])
+  senderType  String   // customer | staff | system
+  senderName  String
+  body        String
+  sentAt      DateTime
+  createdAt   DateTime @default(now())
+}
+
+model TemplateCategory {
+  id        String     @id @default(cuid())
+  name      String
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  templates ReplyTemplate[]
+}
+
+model ReplyTemplate {
+  id               String             @id @default(cuid())
+  title            String
+  categoryId       String?
+  category         TemplateCategory?  @relation(fields: [categoryId], references: [id])
+  body             String
+  usageConditions  String?
+  notes            String?
+  applicableMalls  Json               @default("[]")
+  variables        Json               @default("[]")
+  isFavorite       Boolean            @default(false)
+  isActive         Boolean            @default(true)
+  createdById      String
+  createdBy        User               @relation(fields: [createdById], references: [id])
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  suggestions      SuggestedTemplate[]
+}
+
+model SuggestedTemplate {
+  id                String         @id @default(cuid())
+  inquiryId         String
+  inquiry           Inquiry        @relation(fields: [inquiryId], references: [id])
+  templateId        String?
+  template          ReplyTemplate? @relation(fields: [templateId], references: [id])
+  reason            String?
+  notes             String?
+  recommendedChecks String?
+  draftReply        String?
+  confidenceScore   Float?
+  createdAt         DateTime       @default(now())
+}
+
+model InternalNote {
+  id          String   @id @default(cuid())
+  inquiryId   String
+  inquiry     Inquiry  @relation(fields: [inquiryId], references: [id])
+  body        String
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          UserRole       @default(staff)
+  isActive      Boolean        @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  assignedInquiries Inquiry[]
+  templates     ReplyTemplate[]
+  internalNotes InternalNote[]
+}
